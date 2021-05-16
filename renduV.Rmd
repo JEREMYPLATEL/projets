@@ -1,0 +1,493 @@
+---
+title: "Rendu Projet Monte-Carlo"
+author: "Guillaume et Jeremy Gr 209"
+date: "28 novembre 2020"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+# Exo1   
+**1.** On souhaite simuler une variable aléatoire $(X,Y)$ de densié $f=a\psi$. Pour appliquer l'algorithme de trajet on majore $f$ par une densité telle que $$\forall x \in R^2, f(x,y)\leq M_1*h(x,y)$$ avec $M_1$ une constant supérieur ou égale à 1. Cela revient à majorer $\psi$ par une fonction $g$ de sorte que $$\forall x \in R^2, \psi(x,y)\leq M*g(x,y)$$ on aura alors $f(x,y)\leq a*M*g(x,y)$. 
+On applique alors l'algorithme du rejet et on tire:  
+$(U_n)_{n>0} \overset{iid}\sim U([0,1])$ et $(X_n,Y_n)_{n>0}$ suite de variabes iid suivant la loi de densité $ag$ et tel que $\forall n>0, U_n$ indépendant du couple $(X_n,Y_n)$.    
+Pour simuler une variable selon la loi de densité f on pose le temps d'arret $T=inf\{n\geq1 : Un \leq \frac{f(X_n,Y_n)}{a*M*g(X_n,Y_n)}=\frac{\psi(X_n,Y_n)}{M*g(X_n,Y_n)} \}$. On voit que le $a$ n'est pas important pour tirer une observaton selon la loi de densité $f$:il suffit de majorer $\psi$ et simuler nos variables aléatoires selon $g$.   
+    
+Dans notre cas : 
+$$
+\begin{align}
+\psi(x,y) &= (|\sin(\frac{2}{\pi}x^2-\frac{\pi}{4})|+4\cos^2(x)+y^4)e^{-2(x+|y|)}1_{x \in [-\frac{\pi}{2};\frac{\pi}{2}]}1_{y \in [-1;1]}\\
+&\leq (\frac{\sqrt2}{2}+5)e^{-2x}e^{-2|y|}1_{x \in [-\frac{\pi}{2};\frac{\pi}{2}]}1_{y \in [-1;1]}\\
+&\leq (\frac{\sqrt2}{2}+5)(\frac{1}{2}e^{2\frac{\pi}{2}}*2e^{-2(x+\frac{\pi}{2})}1_{x \in [-\frac{\pi}{2};\frac{\pi}{2}]})(e^{2y^2}\frac{\sqrt{2\pi*0.25}}{\sqrt{2\pi*0.25}}1_{y \in [-1;1]}) && \text{preuve de la majoration plus bas }\\
+&\leq (\frac{\sqrt2}{2}+5)\frac{1}{2}e^{\pi}\sqrt{\frac{\pi}{2}}* l(x)*h(y)=(\frac{\sqrt2}{2}+5)\frac{1}{2}e^{\pi}\sqrt{\frac{\pi}{2}}*g(x,y)\\ &\text{avec l la densité de la loi exponentielle translatée (-pi/2) et tronquée et h la densité de la loi normale N(0,0.25) tronquée}
+\end{align}
+$$
+Explication de la majoration de $e^{-2|y|}1_{y \in [-1;1]}$ : (passage de la ligne 2 à la ligne 3)
+
+$$
+\begin{align}
+\forall y \in [-1,1],|y|&\geq y^2\\
+-|y|&\leq -y^2\\
+e^{-2|y|}&\leq e^{-2y^2} = \sqrt{2\pi*0.25}*f_{N(0,0.25)}(x)
+\end{align}
+$$
+**2.**
+```{r}
+gen_normal <- function(n)
+{
+  U <- runif(n %/% 2)
+  V <- runif(n %/% 2)
+  
+  Y <- runif(n %% 2)
+  Z <- runif(n %% 2)
+  D <-
+    sqrt(-2 * log(Y)) * cos(2 * pi * Z) #Si n est impair l'observation manquante est réalisé par ce calcul
+  
+  W <- sqrt(-2 * log(U)) * cos(2 * pi * V)
+  X <- sqrt(-2 * log(U)) * sin(2 * pi * V)
+  Z <- 0.5 * c(W, X, D)  #On multiplie pour avoir une N(0,0.25)
+  P <- Z[Z > (-1) & Z < (1)]
+  N <- Z[Z < (-1) | Z > (1)]
+  while (length(N) != 0) #Tant qu'il reste des valeurs au dessus de 1 ou en dessousde -1 on retire  des uniformes 
+  {
+    U <- runif(length(N) %/% 2)
+    V <- runif(length(N) %/% 2)
+    
+    Y <- runif(length(N) %% 2)
+    Z <- runif(length(N) %% 2)
+    D <-
+      sqrt(-2 * log(Y)) * cos(2 * pi * Z) #Si n est impair l'observation manquante est réalisé par ce calcul
+    
+    W <- sqrt(-2 * log(U)) * cos(2 * pi * V)
+    X <- sqrt(-2 * log(U)) * sin(2 * pi * V)
+    Z <- 0.5 * c(W, X, D)
+    P <- c(P, Z[Z > (-1) & Z < (1)])
+    N <- Z[Z < (-1) | Z > (1)]
+  }
+  return(P)
+}
+
+
+gen_exp_trans <- function(n)
+{
+  U <- rexp(n, 2)
+  U <- -(pi / 2) + U
+  P <- U[U < pi / 2]
+  N <- U[U > pi / 2]
+  while (length(N) != 0)#on tronque la loi comme pour la loi normale
+  {
+    U <- rexp(length(N), 2)
+    U <- -(pi / 2) + U
+    P <- c(P, U[U < pi / 2])
+    N <- U[U > pi / 2]
+  }
+  return(P)
+}
+
+#----------------------------fonction de densité
+psi <- function(x, y)
+{
+  bool1=(abs(x)<(pi/2))
+  bool2=(abs(y)<1)
+  bool=bool1*bool2
+  return ( bool *( (abs(sin((2 / pi) * x ^ 2 - pi / 4
+    )) + 4 * cos(x) ^ 2 + y ^ 4) * exp(-2 * (x + abs(y)))))
+}
+
+g <- function(x, y)
+{
+  z <-
+    2 * exp(-2 * (x + (pi / 2))) * dnorm(y, 0, 0.5) / ((pnorm(1, 0, 0.5) -
+                                                          pnorm(-1, 0, 0.5)) * (pexp(pi / 2, 2)))
+  return(z) #lois tronquées d'où la division
+}
+
+psiV <- Vectorize(psi)
+gV <- Vectorize(g)
+
+#---------------------------------------------generateur
+rgen_g <- function(n)
+{
+  return(matrix(
+    c(gen_exp_trans(n), gen_normal(n)),
+    nrow = 2,
+    byrow = TRUE
+  ))
+}
+
+rgen_f <- function(n, M)
+{
+  z <- rgen_g(n + 1) #sinon on avait 999 observations selon g , pas d'explications...
+  p <-
+    psiV(z[1,], z[2,]) / (M * gV(as.numeric(z[1,]), as.numeric(z[2,]))) #p(x,y)
+  u <- runif(n + 1)
+  v <- z[, u > p]#On sépare les observations gardéés des non gardées
+  w <- z[, u < p]
+  t <- p#tableau de valeurs de p(x,y)
+  while (!is.null(dim(v)[2]))#On boucle tant qu'on a pas 10000 obs dans w cad 0 observations dans v.
+  {
+    z <- rgen_g(dim(v)[2])
+    p <- psiV(z[1,], z[2,]) / (M * gV(z[1,], z[2,]))
+    u <- runif(dim(v)[2], 0, 1)
+    w <- cbind(w, z[, u < p])
+    v <- z[, u > p]
+    t <- c(t,p )
+  }
+  return (list(w, t)) #retourne les 2 variables + p(x,y)
+}
+```
+
+**3.** 
+```{r}
+M <- ((sqrt(2) / 2) + 5) * exp(pi) / 2 * sqrt(2 * pi * 0.25)
+n_obs <- 10000
+E2<- rgen_f(n_obs, M)
+z<-E2[[1]] #observations de f
+E3<-E2[[2]] #p(x,y)
+```
+## méthode 1
+**4.**   
+**a)**
+
+on a 
+$$
+\begin{align}
+p(x,y)&=\frac{\psi(x,y)}{M*g(x,y)}=\frac{f(x,y)}{a*M*g(x,y)}\\
+d'où ~~~f(x,y)&=a*Mp(x,y)g(x,y)\\
+d'où ~~~1&=a*\int_{R^2}Mp(x,y)g(x,y)dxdy\\
+d'où ~~~a&=\frac{1}{\int_{R^2}Mp(x,y)g(x,y)dxdy}=\frac{1}{\mathbf{E_g}(Mp(X_n,Y_n))}
+\end{align}
+$$
+On choisit donc $\hat{b}_n= \frac{n}{\sum_{i=1}^n{Mp(X_n,Y_n)}}$
+$$
+\begin{align}
+\mathbf{E}(\hat{b}_n) &= \mathbf{E}(\frac{1}{Mp(X_1,Y_1)})~~~~ \text{car identiquement distribuées}\\
+&\leq \frac{1}{\mathbf{E}(Mp(X_1,Y_1))} ~~~~\text{par convexité de la fonction inverse}\\
+&= \frac{1}{\int_{R^2}Mp(x,y)g(x,y)dxdy}\\
+&=\frac{1}{\frac{1}{a}}=a 
+\end{align}
+$$
+Conclusion: L'estimateur est biaisé.    
+Convergence: On a $(X_i,Y_i)_{i>0}$ iid et intégrable (car l et h intégrable) donc par la loi des grands nombres et la continuité de la fonction inverse $\hat{a}_n \mapsto \frac{1}{\frac{1}{a}}=a$ ps.     
+Pour l'intervalle de confiance, on utilise que $\sqrt{n}(\frac{\frac{1}{\hat{b}_n}-\frac{1}{b}}{\sigma}) \mapsto N(0,1)$ avec $\sigma = \sqrt{var(Mp(X_1,Y_1))}$à l'infini . On utilise ensuite la delta-méthode avec la fonction $f:x\mapsto \frac{1}{x}$ on a alors $\sqrt{n}(\frac{{\hat{b}_n}-a}{\sigma}) \mapsto N(0,{a^4})$.   
+On note $\hat{\sigma}$ la variance empirique corrigée. Comme 
+$$
+\sqrt{\frac{\hat{\sigma^2}}{\sigma^2}} \rightarrow 1 \text{ en probabilité (par la LGN car } \hat{\sigma} \rightarrow \sigma) 
+$$
+On a un estimateur consistant de sigma donc par le théorème de Slutsky, on peut remplacer $\sigma$ par $\hat{\sigma}$ dans l'intervalle de confiance. De même on estime $a^4$ par $b_n^4$
+L'intervalle est alors 
+$$
+I_b=[-1.96\sqrt{\frac{\sigma^2b_n^4}{n}}+b_n,1.96\sqrt{\frac{\sigma^2b_n^4}{n}}+b_n]
+$$
+
+**b)**
+```{r}
+bn <- 1 / mean(M *(E3))
+k<-1.96 * sqrt(var(E3)*bn^4)
+Ib <-
+  c(bn - k / sqrt(n_obs), k / sqrt(n_obs) +
+      bn)
+```
+
+On trouve $\hat{b}_n =$ `r bn` et $I=$[`r Ib[1]`,`r Ib[2]`]
+
+**c)**
+On propose une méthode bootsrap pour trouver le biais de l'estimateur
+```{r}
+v <- E3[sample(1:n_obs, 50 * 51, replace = TRUE)]
+boot <- matrix(v, nrow = 50, ncol = 51)
+eboot <- colSums(boot) / 50
+eboot <- 1 / (M * mean(eboot))
+biais <- eboot - bn
+```
+biais=`r biais`
+
+**5.**
+On a que $a=\frac{f(x,y)}{\psi(x,y)}$ d'où $2a\pi=\int_{R^2}a(dxdy)=\int_{R^2}\frac{f(x,y)}{\psi(x,y)}dxdy=E_f(\frac{1}{\psi(x,y)})$. 
+On prend alors $\hat{a}_n= \frac{1}{n}\sum_{i=1}^n\frac{1}{2\pi\psi(X_i,Y_i)}$ où $(X_i,Y_i)$ sont tirées selon la densité f.  
+
+
+Autre méthode: on aurait pu utiliser que :
+Soit T la variable aléatoire qui compte le temps d'attente pour avoir une observation selon g.
+On a $E[T]=a*M$ donc $a=\frac{E[T]}{M}$. 
+
+Pour la première méthode on a que 
+$$
+E(\hat{a}_n)= E_f(\frac{1}{2\pi\psi(X_1,Y_1)})=a
+$$
+On a aussi par la LGN comme les observations sont iid que l'estimateur converge vers a. On a alors comme intervalle de confiance au niveau 95%:
+$I=[-1.96\sqrt{\frac{var(\hat{a}_n)}{n}}+\hat{a}_n),1.96\sqrt{\frac{var(\hat{a}_n)}{n}}+\hat{a}_n]$
+```{r}
+va1<-1/(2*pi*psiV(z[1,],z[2,]))
+an <- mean(va1)
+p <- (1.96 * sqrt(var(va1) / n_obs))
+Ia <- c(an - p, an + p)
+```
+On trouve $\hat{a}_n =$ `r an` et $I=$[`r Ia[1]`,`r Ia[2]`]
+
+**6**
+
+
+**7.** 
+$$
+\begin{align}
+\forall x \in \mathbf{R}, ~~~~f_X(x) &= \int_Rf_{X,Y}(x,y)dy \\
+&= a\int_R\psi_{X,Y}(x,y)dy\\
+&= a\int_{-1}^{1}(C_1(x)+y^4)C_2(x)e^{-2|y|}dy~~~~ \text{avec } C_1(x)=|\sin(\frac{2}{\pi}x^2-\frac{\pi}{4})|+4\cos^2(x)  \text{ et }  C_2(x)=e^{-2x}\\
+&= a(\int_{-1}^{1}(C_1(x)C_2(x)e^{-2|y|}dy)+\int_{-1}^{1}C_2(x)y^4e^{-2|y|}dy)\\
+&= a(A+B)
+\end{align}
+$$
+On calcul A et B:
+$$
+\begin{align}
+A &= C_1(x)C_2(x)(\int_{-1}^{0}e^{2y}dy+\int_{0}^{1}e^{-2y}dy)\\
+&= C_1(x)C_2(x) ([\frac{1}{2}e^{2y}]_{-1}^0 + [-\frac{1}{2}e^{-2y}]_{0}^1\\
+&=C_1(x)C_2(x) (1-e^{-2})\\
+~~
+B&=C_2(x)\int_{-1}^{1}y^4e^{-2|y|}dy\\
+&=2C_2(x)\int_{-1}^{0}y^4e^{-2|y|}dy~~~\text{car la fonction est pair}\\
+&=2C_2(x)([\frac{1}{2}e^{2y}y^4]_{-1}^0- \int_{-1}^02e^{2y}y^3dy \\
+&=2C_2(x)([\frac{1}{2}e^{2y}y^4]_{-1}^0-[e^{2y}y^3]_{-1}^0+\int_{-1}^03 y^2e^{2y})\\
+&= 2C_2(x)([\frac{1}{2}e^{2y}y^4]_{-1}^0-[e^{2y}y^3]_{-1}^0 +3[\frac{1}{2}e^{2y}y^2]_{-1}^0- 3\int_{-1}^0 e^{2y}ydy\\
+&= 2C_2(x)([\frac{1}{2}e^{2y}y^4]_{-1}^0-[e^{2y}y^3]_{-1}^0 +3[\frac{1}{2}e^{2y}y^2]_{-1}^0-3[\frac{1}{2}e^{2y}y]_{-1}^0+3\int_{-1}^0 \frac{1}{2}e^{2y}\\
+&=2C_2(x)([\frac{1}{2}e^{2y}y^4]_{-1}^0-[e^{2y}y^3]_{-1}^0 
+\end{align}
+$$ 
+Un simple calcul nous donne $B= 2C_2(x)(-\frac{21}{4} e^{-2}+\frac{3}{4})$
+Au final on estime $f_X(x)$ par $\hat{f_x(x)}=\hat{a}_n(C_1(x)C_2(x)(1-e^{-2})+2C_2(x)(-\frac{21}{4} e^{-2}+\frac{3}{4}))$
+
+On compare nos observations avec $\hat{f_x(x)}$:
+```{r}
+f <- function(x)
+{
+  M <- (abs(sin((2 / pi) * x ^ 2 - pi / 4)) + 4 * cos(x) ^ 2)
+  N <- exp(-2 * x)
+  return(M * N * (1 - exp(-2)) + 2 * N * (3 / 4 - 21 / 4 * exp(-2)))
+}
+fv <- Vectorize(f)
+s <- seq(-pi / 2, pi / 2, 0.1)
+y <- an * fv(s)
+hist(z[1, ],
+     freq = FALSE,
+     xlab = "X1",
+     main = "")
+title("histogramme de X1")
+lines(s, y, col = 'red')
+legend("topright", legend = "densité de f", lty=1:2, col = "red")
+```
+    
+## méthode 2
+**8.** 
+On a $(X_i,Y_i)_{i\geq1}$ iid et intégrable (continue sur un borné) donc d'après la LGN 
+$$
+\begin{align}
+ \hat{w_n}\rightarrow ps~~ E_{f_{X,Y}}(\frac{\psi(x,Y_1)w(X_1)}{\psi(X_1,Y_1)})&=E_{f_{X,Y}}(\frac{f(x,Y_1)w(X_1)}{f(X_1,Y_1)})\\&=\int_{R^2}\frac{f(x,y_1)w(x_1)}{f(x_1,y_1)}f(x_1,y_1)dx_1dy_1\\&=\int_{R^2}f(x,y_1)w(x_1)dx_1dy_1\\&= \int_Rf(x,y_1)\int_Rw(x_1)dx1dy1~~
+\text{par funini car une densité est positive} \\
+&= \int_Rf(x,y_1)dy_1 ~~~~(\text{w densité donc }\int_Rw(x_1)dx=1 )\\
+&=f_x(x)
+\end{align}
+$$
+**9**
+
+
+
+
+**10**
+```{r}
+w <- function(x)
+{
+  return(0.2704205 * ((1 - exp(-2)) * (1 / sqrt(0.5 * pi) * exp(-((x + 0.8) /
+                                                                    0.5
+  )) ^ 2) + ((
+    -(21 / 2) * exp(-2) + 3 / 2
+  )) * 2 * exp(-2 * (x + 0.8 + pi / 2))))
+}
+wV <- Vectorize(w)
+
+w_n <- function(x, z, n)
+{
+  u <- vector(length = n)
+  u <- psiV(x, z[2, 1:n]) * wV(z[1, 1:n]) / psiV(z[1, 1:n], z[2, 1:n])
+  return(c(mean(u), var(u)))
+}
+
+var_w <- w_n(-1, z, n_obs)
+p2 <- 1.96 * sqrt(var_w[2] / n_obs)
+Iw <- c(var_w[1] - p2, var_w[1] + p2)
+```
+On trouve $w_n =$ `r var_w[1]` et $I=$[`r Iw[1]`,`r Iw[2]`]
+
+# Exo2
+**1**
+```{r}
+n <- 10000
+mu <- c(0.1, 0, 0.1)
+sigma <- rbind(c(0.047, 0, 0.0117), c(0, 0.047, 0), c(0.0117, 0, 0.047))
+
+rmvnorm <- function(n, mu, sigma) {
+  L <- t(chol(sigma))
+  X <- matrix(rnorm(3 * n), nrow = length(mu))
+  
+  W = mu + L %*% X
+  return(W)
+}
+
+set.seed(0)
+x <- rmvnorm(n, mu, sigma);
+```
+
+
+
+**2**
+On estime $\delta$ par $\overline{\delta}=\frac{1}{n}\sum_{i=1}^nmin(3,\frac{1}{3}\sum_{k=1}^3e^{-X_k^{i}})$ où $(X_1^{i},X_2^{i},X_3^{i})_{i>0}\overset{iid}\sim N(\mu, \Sigma)$
+```{r}
+teta_barre <- function(x)
+{
+  x <- colMeans(exp(-x))
+  x[x > 3] <- 3
+  return(x)
+}
+
+x1 <- teta_barre(x)
+teta1 <- mean(x1)
+var_teta1 <- var(x1)
+erreur_quadra_teta1 <- (1 / n) * var(x1)
+```
+On trouve $\delta =$ `r teta1` et l'erreur quadratique moyenne associé est `r erreur_quadra_teta1`.
+
+
+**3** 
+Comme dans le cours, on utilise le fait que $A(X)=2\mu-X \overset{iid}\sim N(\mu,\Sigma)$. Comme A est est décroissante en chacune des coordonnées de $X$, on a $cov(X,AX)<0$ condition suffisante pour que l'on ai : $var(\hat{\delta})\leq var(\overline{\delta})/2$ avec $\hat{\delta}=\frac{1}{n}\sum_{i=1}^n \frac{min(3,\frac{1}{3}\sum_{k=1}^3e^{-X_k^{i}})+min(3,\frac{1}{3}\sum_{k=1}^3e^{-AX_k^{i}})}{2}$.
+
+```{r}
+teta_chapeau <- function(x) {
+  y <- (2 * mu) - x
+  y <- colMeans(exp(-y))
+  y[y > 3] <- 3
+  z <- colMeans(exp(-x))
+  z[z > 3] <- 3
+  
+  return(rbind(z,y))
+}
+
+u<-teta_chapeau(x)
+x2 <- colMeans(u)
+p<-cov(u[1,],u[2,])/var(u[1,])
+R1<-4/(3*(1+p))
+teta2 <- mean(x2)
+var_teta2 <- var(x2)
+erreur_quadra_teta2 <- (1 / n) * var(x2)
+```
+On trouve $\delta =$ `r teta2` et l'erreur quadratique moyenne associé est `r erreur_quadra_teta2`. L'erreur quadratique est environ 100x meilleur que pour l'estimateur de Monte-Carlo classique.
+On a aussi après essais que le coût  pour simuler X et celui d'évaluation de h sont quasiment identiques. D'après le cours on conclut que $R_1=\frac{4}{3(1+p)}$avec $p=cov(h(X),h(AX))/var(h(X))$ avec $h(X)=min(3,\frac{1}{3}\sum_{k=1}^3e^{-X_k^{i}})$. On trouve alors $R_1=$ `r R1`. Donc cet estimateur est environ `r R1` plus efficace que l'estimateur de Monte-Carlo classique.
+
+**4** 
+On utilise le développement limité  d'ordre 2 de $e^{-x}$ pour obtenir $h_0$. On prend:$$ h_0(x)=\frac{1}{3}\sum_{k=1}^31-x_k+\frac{x_k^2}{2}=1+\frac{1}{3}\sum_{k=1}^3-x_k+\frac{x_k^2}{2}$$.
+
+```{r}
+h0 <- function(x) {
+  y <- (x ** 2)/2
+  z <- colMeans(-x + y)
+  return(1 + z)
+}
+
+correlation <- cor(h0(x), teta_barre(x))
+```
+On obtient que $corr(h_0(x),h(x))=$ `r correlation`. 
+On prend ainsi comme estimateur de $\delta$, $\hat{\delta}_n(b)= \frac{1}{n}\sum_{i=1}^n (min(3,\frac{1}{3}\sum_{k=1}^3e^{-X_k^{i}})-b(h_0(X^{i})-E(h_0(X)))$.
+Calcul de $E(h_0(X))$:
+$$
+\begin{align}
+E(h_0(X))&= 1+\frac{1}{3}\sum_{k=1}^3-E(X_k)+\frac{E(X_k^2)}{2}\\
+&= 1+\frac{1}{3}\sum_{i=1}^3-E(X_k)+\frac{1}{2}(V(X_k)+E(X_k)^2)\\
+&= 1+\frac{1}{3}(-0.2 + \frac{1}{2}(0.047 \times 3 + 2 \times 0.1^2))\\
+&= 0.96
+\end{align}
+$$
+```{r}
+teta_chapeau_b <- function(x, l, n) {
+  y <- h0(x)
+  x <- teta_barre(x)
+  
+  b <- cov(y[1:l], x[1:l]) / var(y[1:l])
+  
+  z <- x[(l + 1):n] - b * (y[(l + 1):n] - 0.96)
+  return(z)
+  
+}
+
+x3 <- teta_chapeau_b(x, 1000, n)
+teta3 <- mean(x3)
+var_teta3 <- var(x3)
+erreur_quadra_teta3 <- (1 / n) * var(x3)
+```
+On trouve $\delta =$ `r teta3` et l'erreur quadratique moyenne associé est `r erreur_quadra_teta3`.
+On voit que si on diminue le nombre de simulations utilisés pour b, la variance augmente. A l'inverse si b est trop grand, le biais augmente.
+
+
+
+
+# exo3
+**1** 
+On propose comme estimateur de $\delta$, $\hat{\delta}=\frac{1}{n}\sum_{j=1}^n\sum_{i=1}^{Y_j}\log(X_i^j+1)$ avec $(Y_j)_{j\geq1} \overset{iid}\sim G(p)$ et $((X_i^j)_{i\leq j})_{j\geq0} \overset{iid}\sim \Gamma(m,\theta)$
+Comme l'estimateur est sans biais,l'erreur quadratique est $\frac{1}{n}var(\sum_{i=1}^{Y}\log(X_i+1))$ .
+```{r}
+gen_gama <- function(m)
+{
+  return(sum(log(rgamma(m, 2, 2) + 1)))
+}
+gen_gamav <- Vectorize(gen_gama)
+
+Monte_classique <- function(n)
+{
+  m <- rgeom(n, 0.2) + 1 #rang du premier succÃ¨s
+  x <- gen_gamav(m)
+  EM <- mean(x)
+  EQ <- 1 / n * (var(x))
+  return(c(EM, EQ))
+}
+monte_est<-Monte_classique(n_obs)
+```
+On obtient $\delta =$ `r monte_est[1]`et l'erreur quadratique est `r monte_est[2]`
+
+**2** 
+On prend comme strates $D_k=\{Y=k+1\} ~~~\forall 0\leq k \leq 14$ et $D_{15}=\{Y>14\}$
+On utilise l'allocation proportionelle on a donc $\forall 0\leq k \leq 14~~~~ q_k=n*P(Y=k)$.
+Notre estimateur est donc $\hat{\delta}_2=\sum_{k=1}^{14}P(Y=k)\frac{1}{n_k}\sum_{j=1}^{n_k}\sum_{i=1}^{k}\log(X_i^k+1)$
+```{r}
+strat <- function(n)
+{
+  D <- c(0:13)   # trouver les p_k
+  u <- dgeom(D, 0.2)
+  ni <- n * u   #trouver les n_k
+  u <- c(u, 1 - sum(u)) #p_15
+  ni <- round(ni, 0)#n_k doit être un entier
+  ni <- c(ni, n - sum(ni))  #n_15
+  
+  v <- vector(length = 15) #vecteur des variances des strates
+  m2 <- 0 # On calcul la sum au fur et à mesure
+  for (i in 1:15)
+  {
+    p <- gen_gamav(rep(i, ni[i])) #generre n_k gamma avec m=k
+    m2 <- m2 + mean(p) * u[i]
+    v[i] = var(p) * u[i]
+  }
+  EQ2 <- 1 / n * sum(v)
+  return(c(m2, EQ2))
+}
+```
+L'efficacité relative est $\frac{C\sigma_{MC}}{C_1\sigma_{str}}$.
+On la calcule ainsi:
+```{r}
+library(microbenchmark)
+#problème pour n petit car certaines strates sont sans observations dans l'estimateur stratifié
+c <-
+  microbenchmark(ST <-
+                   strat(n_obs), MC <- Monte_classique(n_obs), times = 10)[, 2]
+c <- c[2] / c[1]
+ER <- c * MC[2] / ST[2]
+EQ2<-ST[2]
+```
+L'erreur quadratique est `r EQ2`
+On a alors que pour un même nombre d'observations, $\hat{\delta}_2$ est en moyenne `r ER` fois plus efficaces que l'estimateur de monte-carlo classique
